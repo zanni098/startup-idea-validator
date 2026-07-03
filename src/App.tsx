@@ -1,41 +1,59 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './styles.css';
-
-interface Scorecard { score: number; icp: string; critique: string; market: string; competitors: string[]; risks: string[]; experiment: string; positioning: string; }
-
-function validate(idea: string): Scorecard {
-  const hasAI = idea.toLowerCase().includes('ai') || idea.toLowerCase().includes('agent');
-  const hasUser = idea.toLowerCase().includes('user') || idea.toLowerCase().includes('customer') || idea.toLowerCase().includes('team');
-  const base = 60 + (hasAI ? 12 : 0) + (hasUser ? 8 : 0) + Math.floor(Math.random() * 10);
-  return {
-    score: Math.min(95, base),
-    icp: hasUser ? 'Non-technical operators at growing startups (10-50 employees) who need automation but lack engineering bandwidth.' : 'Technical founders and indie hackers building products without dedicated ops teams.',
-    critique: 'The core pain is real, but onboarding trust is the hardest risk. Users need to believe the tool won\'t break their existing workflow before they commit.',
-    market: hasAI ? 'AI tooling TAM is $45B+ and growing 35% YoY. The automation-for-non-technical segment is underserved.' : 'Growing market with strong tailwinds. Competition exists but differentiation is achievable.',
-    competitors: ['Zapier (general automation, not AI-native)', 'n8n (open-source, technical audience)', 'Relevance AI (similar positioning, higher price)', 'Custom scripts (the DIY alternative)'],
-    risks: ['Onboarding trust barrier — users fear breaking existing workflows', 'Framework churn — underlying AI tooling changes quarterly', 'Support burden scales linearly with user count', 'Pricing pressure from free/open-source alternatives'],
-    experiment: 'Record 10 non-technical installs and measure time-to-first-agent under 12 minutes. If 7/10 succeed unassisted, the onboarding is viable.',
-    positioning: 'Sell confidence and setup safety, not just one-click convenience. Frame as "your AI ops team" rather than "another tool".',
-  };
-}
+import { validateIdea, Scorecard } from './lib/validator';
 
 export default function App() {
   const [idea, setIdea] = useState('');
+  const [apiKey, setApiKey] = useState('');
   const [result, setResult] = useState<Scorecard | null>(null);
   const [stage, setStage] = useState(-1);
   const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Check if API key is in environment variables (Vite uses VITE_ prefix)
+    const envKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+    if (envKey) {
+      setApiKey(envKey);
+    }
+  }, []);
+
   const stages = ['Clarifying customer and job-to-be-done…', 'Running devil\'s advocate critique…', 'Estimating market pull…', 'Mapping alternatives and competitors…', 'Scoring execution risk…', 'Generating validation experiment…'];
 
-  function run() {
+  async function run() {
     const input = idea.trim() || 'Mjord: one-click installer for agentic AI tools so non-technical users can run agents locally.';
     if (!idea.trim()) setIdea(input);
-    setResult(null); setStage(0); setRunning(true);
-    stages.forEach((_, i) => {
-      setTimeout(() => {
-        setStage(i);
-        if (i === stages.length - 1) { setResult(validate(input)); setRunning(false); }
-      }, (i + 1) * 800);
-    });
+
+    if (!apiKey) {
+      setError('Please provide an Anthropic API key to run the live validation.');
+      return;
+    }
+
+    setResult(null);
+    setStage(0);
+    setRunning(true);
+    setError(null);
+
+    // Simulation of progress while calling the real API
+    const progressInterval = setInterval(() => {
+      setStage(prev => {
+        if (prev < stages.length - 2) return prev + 1;
+        return prev;
+      });
+    }, 1500);
+
+    try {
+      const scorecard = await validateIdea(input, apiKey);
+      clearInterval(progressInterval);
+      setStage(stages.length - 1);
+      setResult(scorecard);
+    } catch (err: any) {
+      clearInterval(progressInterval);
+      setError(err.message || 'An error occurred during validation.');
+      setStage(-1);
+    } finally {
+      setRunning(false);
+    }
   }
 
   return (
@@ -45,8 +63,25 @@ export default function App() {
         <span style={{ fontWeight: 700, fontSize: 18 }}>Startup Idea Validator</span>
       </header>
       <main style={{ maxWidth: 900, margin: '0 auto', padding: 24 }}>
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 13, color: '#94a3b8', display: 'block', marginBottom: 8 }}>Anthropic API Key (required for live validation)</label>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={e => setApiKey(e.target.value)}
+            placeholder="sk-ant-..."
+            style={{ width: '100%', background: '#111827', border: '1px solid #1e293b', borderRadius: 8, padding: 10, color: '#e2e8f0', fontSize: 14 }}
+          />
+        </div>
         <label style={{ fontSize: 13, color: '#94a3b8', display: 'block', marginBottom: 8 }}>Describe your startup idea</label>
         <textarea value={idea} onChange={e => setIdea(e.target.value)} placeholder="Mjord: one-click installer for agentic AI tools…" rows={3} style={{ width: '100%', background: '#111827', border: '1px solid #1e293b', borderRadius: 8, padding: 14, color: '#e2e8f0', fontSize: 14, resize: 'vertical' }} />
+
+        {error && (
+          <div style={{ marginTop: 10, padding: '10px', background: '#450a0a', border: '1px solid #991b1b', borderRadius: 8, color: '#fecaca', fontSize: 13 }}>
+            ⚠️ {error}
+          </div>
+        )}
+
         <button onClick={run} disabled={running} style={{ marginTop: 10, padding: '12px 24px', background: running ? '#334155' : 'linear-gradient(135deg, #334155, #16a34a)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, cursor: running ? 'not-allowed' : 'pointer' }}>
           {running ? 'Validating…' : '🎯 Validate Idea'}
         </button>
